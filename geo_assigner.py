@@ -159,32 +159,34 @@ def assign(source_geojson, target_geojson, strategy, progress=None):
 
 
 if __name__ == '__main__':
-
+    import argparse
     import sys
-
-    from shapely.geometry import Point, Polygon
 
     STRATEGIES = {
         'last': LastValueStrategy,
         'list': ListValuesStrategy,
     }
 
-    if len(sys.argv) != 6:
-        sys.exit('Usage: {} SOURCE_FILE TARGET_FILE PROPERTY_NAME STRATEGY OUTPUT_FILE'.format(sys.argv[0]))
-    source_filename = sys.argv[1]
-    target_filename = sys.argv[2]
-    property_name = sys.argv[3]
-    strategy_name = sys.argv[4]
-    output_filename = sys.argv[5]
+    parser = argparse.ArgumentParser(description='Assign a property from ' +
+                                     'one set of GeoJSON features to another.')
+    parser.add_argument('source_filename', metavar='SOURCE',
+                        help='Source GeoJSON file')
+    parser.add_argument('target_filename', metavar='TARGET',
+                        help='Target GeoJSON file')
+    parser.add_argument('property_name', metavar='PROPERTY',
+                        help='Property name')
+    parser.add_argument('output_filename', metavar='OUTPUT',
+                        help='Output file')
+    parser.add_argument('--strategy', '-s', default='last', choices=STRATEGIES,
+                        help='Conflict resolution strategy in case of ' +
+                        'multiple matches. Can either be "last" (use the ' +
+                        'value of the last match, default) or "list" ' +
+                        '(collect the values from all matches).')
+    args = parser.parse_args()
 
-    try:
-        strategy_cls = STRATEGIES[strategy_name]
-    except KeyError:
-        sys.exit('Unknown strategy "{}".'.format(strategy_name))
-    strategy = strategy_cls(property_name)
-
-    source_geojson = load_json(source_filename)
-    target_geojson = load_json(target_filename)
+    strategy = STRATEGIES[args.strategy](args.property_name)
+    source_geojson = load_json(args.source_filename)
+    target_geojson = load_json(args.target_filename)
 
     def progress(current, total):
         sys.stdout.write('.')
@@ -193,5 +195,5 @@ if __name__ == '__main__':
     assign(source_geojson, target_geojson, strategy, progress)
     print()
 
-    save_json(target_geojson, output_filename)
+    save_json(target_geojson, args.output_filename)
 
