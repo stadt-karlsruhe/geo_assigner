@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import collections
 import json
 
 import shapely.geometry
@@ -21,78 +22,140 @@ def save_json(data, filename):
         json.dump(data, f)
 
 
-def geojson_to_shapely(feature_collection):
+class Element:
     '''
-    Convert GeoJSON features to Shapely shapes.
+    A geo-data element like a point, line, or polygon.
 
-    Returns a list of 2-tuples. Each tuple consists of the GeoJSON
-    feature and the corresponding Shapely shape. The feature and the
-    shape share their list of coordinates.
+    This class is a facade for the underlying GeoJSON and Shapely
+    objects representing the element's geometry, which are available via
+    the ``feature`` and ``shape`` attributes, respectively.
+
+    The GeoJSON properties are also exposed via the dictionary
+    interface.
     '''
-    return [(feature, shapely.geometry.asShape(feature['geometry']))
-            for feature in feature_collection['features']]
+    def __init__(self, feature):
+        '''
+        Constructor.
+
+        ``feature`` is a GeoJSON feature.
+        '''
+        self.feature = feature
+        self.shape = shapely.geometry.asShape(feature['geometry'])
+
+    def __getitem__(self, key):
+        return self.feature['properties'][key]
+
+    def __setitem__(self, key, value):
+        self.feature['properties'][key] = value
+
+    def __delitem__(self, key):
+        del self.feature['properties'][key]
+
+    def intersection(self, element):
+        '''
+        Return the intersection of this element and another element.
+
+        The return value is a Shapely object.
+        '''
+        return self.shape.intersection(element.shape)
 
 
-class ConflictResolutionStrategy:
+def _geojson_to_elements(feature_collection):
+    return [Element(f) for f in feature_collection['features']]
 
+
+class Strategy:
+    '''
+    Base class for conflict resolution strategies.
+
+    A resolution strategy handles the assignment of property values from
+    sources to the targets they intersect.
+
+    The name of the property that is being assigned is available from the
+    ``property_name`` attribute.
+    '''
     def __init__(self, property_name):
         self.property_name = property_name
 
-    def begin(self, target_feature, target_shape):
+    def begin(self, target):
+        '''
+        Called for every target element before the intersection tests.
+
+        Can update the target's property in place.
+        '''
         pass
 
-    def intersection(self, source_feature, source_shape, target_feature,
-                     target_shape, intersection, property_value):
+    def intersection(self, source, target, intersection):
+        '''
+        Called for every intersecting source/target pair.
+
+        ``source`` and ``target`` are ``Element`` instances, and
+        ``intersection`` is a Shapely object describing their intersection.
+        '''
         pass
 
-    def end(self, target_feature, target_shape):
+    def end(self, target):
+        '''
+        Called for every target after the intersection tests.
+
+        After this call, the target's property must be in its intended state.
+        '''
         pass
 
 
-class LastValueStrategy(ConflictResolutionStrategy):
-
-    def begin(self, target_feature, target_shape):
+class LastValueStrategy(Strategy):
+    '''
+    Strategy that uses the value from the last intersection.
+    '''
+    def begin(self, target):
         try:
-            del target_feature['properties'][self.property_name]
+            del target[self.property_name]
         except KeyError:
             pass
 
-    def intersection(self, source_feature, source_shape, target_feature,
-                     target_shape, intersection):
-        value = source_feature['properties'][self.property_name]
-        target_feature['properties'][self.property_name] = value
+    def intersection(self, source, target, intersection):
+        target[self.property_name] = source[self.property_name]
 
 
-class ListValuesStrategy(ConflictResolutionStrategy):
+class ListValuesStrategy(Strategy):
+    '''
+    Strategy that collects the values from all intersections in a list.
+    '''
+    def begin(self, target):
+        target[self.property_name] = []
 
-    def begin(self, target_feature, target_shape):
-        target_feature['properties'][self.property_name] = []
-
-    def intersection(self, source_feature, source_shape, target_feature,
-                     target_shape, intersection):
-        value = source_feature['properties'][self.property_name]
-        target_feature['properties'][self.property_name].append(value)
+    def intersection(self, source, target, intersection):
+        target[self.property_name].append(source[self.property_name])
 
 
 def assign(source_geojson, target_geojson, strategy, progress=None):
     '''
     Assign a property from one set of GeoJSON features to another.
 
+    ``source_geojson`` and ``target_geojson`` are GeoJSON feature
+    collections.
+
+    ``strategy`` is an instance of ``Strategy``.
+
+    ``progress`` is an optional callback that is called each time before
+    the next target is being processed. It receives two arguments: The
+    number of already processed targets and the number of targets in
+    total.
+
     Modifies ``target_geojson`` in-place.
     '''
-    sources = geojson_to_shapely(source_geojson)
-    targets = geojson_to_shapely(target_geojson)
-    for i, (target_feature, target_shape) in enumerate(targets):
+    sources = _geojson_to_elements(source_geojson)
+    targets = _geojson_to_elements(target_geojson)
+    for i, target in enumerate(targets):
         if progress:
             progress(i, len(targets))
-        strategy.begin(target_feature, target_shape)
-        for source_feature, source_shape in sources:
-            intersection = target_shape.intersection(source_shape)
+        strategy.begin(target)
+        for source in sources:
+            intersection = target.intersection(source)
             if intersection.is_empty:
                 continue
-            strategy.intersection(source_feature, source_shape, target_feature,
-                                  target_shape, intersection)
-        strategy.end(target_feature, target_shape)
+            strategy.intersection(source, target, intersection)
+        strategy.end(target)
 
 
 if __name__ == '__main__':
