@@ -30,6 +30,9 @@ import json
 import shapely.geometry
 
 
+__version__ = '0.1.0'
+
+
 def load_json(filename):
     '''
     Load a JSON file.

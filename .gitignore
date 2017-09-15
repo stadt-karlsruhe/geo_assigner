@@ -1,6 +1,9 @@
 /venv/
+/build/
+/dist/
 
 .*.swp
 *.pyc
 __pycache__/
+*.egg-info/
 

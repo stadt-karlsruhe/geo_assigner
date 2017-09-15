@@ -1,9 +1,9 @@
-# geo-assigner
+# geo_assigner
 
 *A command-line tool and Python module to assign a property from one set of
 GeoJSON features to another*
 
-geo-assigner operates on two set of GeoJSON features: the sources and the
+`geo_assigner` operates on two set of GeoJSON features: the sources and the
 targets. For each target, it copies a chosen property from all sources that
 intersect the target to the target.
 
@@ -17,16 +17,21 @@ a property `DistrictName` holding its name.
 
 To add to each tree the name of the district it is located in:
 
-    python geo_assigner.py districts.geojson trees.geojson DistrictName output.geojson
+    geo_assigner districts.geojson trees.geojson DistrictName output.geojson
 
 To add to each district a list of all IDs of its trees:
 
-    python geo_assigner.py -s list trees.geojson districts.geojson TreeID output.geojson
+    geo_assigner -s list trees.geojson districts.geojson TreeID output.geojson
 
 
-## Reference
+## Installation
 
-    $ ./geo_assigner.py --help
+    pip install -e git+https://https://github.com/stadt-karlsruhe/geo_assigner.git#egg=geo_assigner
+
+
+## Usage
+
+    $ geo_assigner --help
     usage: geo_assigner.py [-h] [--strategy {list,last}]
                            SOURCE TARGET PROPERTY OUTPUT
 
